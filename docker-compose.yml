@@ -245,6 +245,26 @@ services:
       - emi-network
     mem_limit: 512m
 
+  dashboard:
+    build: ./services/dashboard
+    container_name: dashboard
+    restart: unless-stopped
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/emi_system
+      - AI_ENGINE_URL=http://ai-engine:3002
+      - ES_URL=http://elasticsearch:9200
+      - NODE_OPTIONS=--max-old-space-size=512
+    ports:
+      - "3000:3000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      ai-engine:
+        condition: service_started
+    networks:
+      - emi-network
+    mem_limit: 768m
+
 volumes:
   zookeeper_data:
     driver: local
