@@ -6,32 +6,33 @@ import { SpendTrendChart } from '@/components/SpendTrendChart';
 import { SuggestionCards } from '@/components/SuggestionCards';
 import { AlertTimeline } from '@/components/AlertTimeline';
 import { useRiskPolling } from '@/hooks/useRiskPolling';
-import { 
-  DollarSign, 
-  AlertTriangle, 
-  Calendar, 
-  RefreshCw, 
-  FileText,
+import { useCustomer } from '@/context/CustomerContext';
+import {
+  DollarSign,
+  AlertTriangle,
+  Calendar,
+  RefreshCw,
   Sliders,
   Play,
   Wallet
 } from 'lucide-react';
 
 export default function Dashboard() {
-  const [userId, setUserId] = useState('user_123');
-  const [customEmi, setCustomEmi] = useState('500');
+  const { selectedCustomer } = useCustomer();
+
+  const [customEmi, setCustomEmi] = useState(String(selectedCustomer.emiAmount));
   const [customDate, setCustomDate] = useState('2026-06-01');
-  
-  const { 
-    prediction, 
-    trends, 
-    alerts, 
-    loading, 
-    triggering, 
-    error, 
-    refresh, 
-    trigger 
-  } = useRiskPolling(userId, 30000);
+
+  const {
+    prediction,
+    trends,
+    alerts,
+    loading,
+    triggering,
+    error,
+    refresh,
+    trigger
+  } = useRiskPolling(selectedCustomer.id, 30000);
 
   const handleTriggerPrediction = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,18 +59,30 @@ export default function Dashboard() {
     }
   };
 
+  // Prefer live prediction data, fall back to seed customer data
+  const activeSeverity = prediction?.severity ?? selectedCustomer.severity;
+  const activeRiskScore = prediction?.risk_score ?? selectedCustomer.riskScore;
+  const activeMissProb = prediction?.miss_probability ?? selectedCustomer.missProbability;
+  const activeSavings = selectedCustomer.assessedSavings;
+  const activeEmiAmount = prediction?.emi_amount ?? selectedCustomer.emiAmount;
+  const activeEmiDueDate = prediction?.emi_due_date ?? `2026-06-${selectedCustomer.emiDueDate.padStart(2, '0')}`;
+  const activeSuggestions = prediction?.suggestions?.length ? prediction.suggestions : selectedCustomer.suggestions;
+  const activeSpendTrend = trends.length ? trends : selectedCustomer.spendTrend;
+
   return (
     <div className="min-h-screen bg-darkBg text-gray-100 flex flex-col font-sans">
-      <Header userId={userId} setUserId={setUserId} />
+      <Header />
 
       <main className="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
-        
+
         {/* Top Info Banner */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#101625]/60 border border-[#1f293d] rounded-2xl p-5 backdrop-blur-sm">
           <div>
-            <h2 className="text-xl font-bold tracking-tight text-white">Vigilance Analytics Terminal</h2>
+            <h2 className="text-xl font-bold tracking-tight text-white">
+              {selectedCustomer.name} — Vigilance Analytics Terminal
+            </h2>
             <p className="text-sm text-gray-400">
-              Interactive credit-stress intelligence running RAG predictions with tinyllama & Elasticsearch.
+              {selectedCustomer.city} · {selectedCustomer.accountType.replace('-', ' ')} · {selectedCustomer.loanType} loan
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -84,7 +97,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Diagnostic Errors Notification */}
         {error && (
           <div className="bg-rose-950/40 border border-rose-800/40 text-rose-200 p-4 rounded-xl flex items-start gap-3.5 shadow-lg">
             <AlertTriangle className="text-rose-400 shrink-0 mt-0.5" size={18} />
@@ -102,20 +114,15 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            {/* COLUMN 1: Risk score gauge + interactive trigger */}
-            <div className="space-y-6 lg:col-span-1">
-              
-              {/* Risk Gauge dial */}
-              <RiskGauge 
-                score={prediction?.risk_score || 0} 
-                severity={prediction?.severity || 'low'} 
-              />
 
-              {/* Prediction Interactive control card */}
+            {/* COLUMN 1: Risk gauge + interactive predictor */}
+            <div className="space-y-6 lg:col-span-1">
+
+              <RiskGauge score={activeRiskScore} severity={activeSeverity} />
+
               <div className="glass-panel p-6 relative overflow-hidden">
                 <div className="absolute w-24 h-24 rounded-full bg-blue-600 blur-[80px] opacity-10 -bottom-8 -right-8 pointer-events-none" />
-                
+
                 <h3 className="text-sm font-bold tracking-wider text-gray-400 uppercase mb-4 flex items-center gap-2">
                   <Sliders size={16} className="text-cyan-400" />
                   <span>Interactive Predictor Config</span>
@@ -128,11 +135,11 @@ export default function Dashboard() {
                     </label>
                     <div className="relative">
                       <span className="absolute left-3 top-2.5 text-gray-500 font-mono text-sm">₹</span>
-                      <input 
+                      <input
                         type="number"
                         value={customEmi}
                         onChange={(e) => setCustomEmi(e.target.value)}
-                        placeholder="5000"
+                        placeholder={String(selectedCustomer.emiAmount)}
                         className="w-full bg-[#0c101b] border border-[#1f293d] rounded-xl pl-8 pr-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500 font-mono transition-all"
                         required
                       />
@@ -145,7 +152,7 @@ export default function Dashboard() {
                     </label>
                     <div className="relative">
                       <Calendar className="absolute left-3 top-2.5 text-gray-500" size={16} />
-                      <input 
+                      <input
                         type="date"
                         value={customDate}
                         onChange={(e) => setCustomDate(e.target.value)}
@@ -175,84 +182,68 @@ export default function Dashboard() {
                 </form>
               </div>
 
-              {/* Context Summary details */}
-              {prediction && (
-                <div className={`p-5 rounded-2xl bg-[#131926]/50 border-2 ${getSeverityRing(prediction.severity)}`}>
-                  <h4 className="text-xs font-black tracking-widest text-gray-400 uppercase mb-2">Primary Diagnosis</h4>
-                  <div className="flex items-center gap-2.5 mb-3">
-                    <span className="text-lg">📈</span>
-                    <span className="text-sm font-mono text-gray-200">
-                      Miss Probability: <span className="font-bold text-white text-base">{(prediction.miss_probability * 100).toFixed(0)}%</span>
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-400 leading-relaxed font-sans">{prediction.reasoning}</p>
+              {/* Primary Diagnosis */}
+              <div className={`p-5 rounded-2xl bg-[#131926]/50 border-2 ${getSeverityRing(activeSeverity)}`}>
+                <h4 className="text-xs font-black tracking-widest text-gray-400 uppercase mb-2">Primary Diagnosis</h4>
+                <div className="flex items-center gap-2.5 mb-3">
+                  <span className="text-lg">📈</span>
+                  <span className="text-sm font-mono text-gray-200">
+                    Miss Probability: <span className="font-bold text-white text-base">{(activeMissProb * 100).toFixed(0)}%</span>
+                  </span>
                 </div>
-              )}
+                {prediction && (
+                  <p className="text-xs text-gray-400 leading-relaxed font-sans">{prediction.reasoning}</p>
+                )}
+              </div>
             </div>
 
-            {/* COLUMN 2 & 3: Line Chart, AI suggestions, history logs */}
+            {/* COLUMN 2 & 3 */}
             <div className="lg:col-span-2 space-y-6">
-              
-              {/* Stat Counters Row */}
+
+              {/* Stat Cards Row */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                
-                {/* Available Liquid Funds */}
-                <div className="glass-panel p-4 flex items-center gap-4 relative overflow-hidden">
+
+                <div className="glass-panel p-4 flex items-center gap-4">
                   <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
                     <Wallet size={20} />
                   </div>
                   <div>
                     <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">Assessed Savings</span>
-                    <span className="text-base font-bold font-mono text-white">₹1,500.00</span>
+                    <span className="text-base font-bold font-mono text-white">₹{activeSavings.toLocaleString('en-IN')}</span>
                   </div>
                 </div>
 
-                {/* Risk Severity indicator */}
-                <div className="glass-panel p-4 flex items-center gap-4 relative overflow-hidden">
+                <div className="glass-panel p-4 flex items-center gap-4">
                   <div className="p-3 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400">
                     <AlertTriangle size={20} />
                   </div>
                   <div>
                     <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">Stress Level</span>
-                    <span className={`text-xs font-black px-2 py-0.5 rounded uppercase mt-0.5 inline-block ${prediction ? getSeverityBadgeClass(prediction.severity) : 'bg-gray-800 text-gray-400'}`}>
-                      {prediction?.severity || 'LOW'}
+                    <span className={`text-xs font-black px-2 py-0.5 rounded uppercase mt-0.5 inline-block ${getSeverityBadgeClass(activeSeverity)}`}>
+                      {activeSeverity}
                     </span>
                   </div>
                 </div>
 
-                {/* Upcoming EMI details */}
-                <div className="glass-panel p-4 flex items-center gap-4 relative overflow-hidden">
+                <div className="glass-panel p-4 flex items-center gap-4">
                   <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400">
                     <Calendar size={20} />
                   </div>
                   <div>
                     <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">Upcoming Payment</span>
                     <span className="text-xs font-bold font-mono text-white mt-0.5 block">
-                      ₹{prediction?.emi_amount || 500} — {prediction?.emi_due_date || '2026-06-01'}
+                      ₹{activeEmiAmount.toLocaleString('en-IN')} — {activeEmiDueDate}
                     </span>
                   </div>
                 </div>
 
               </div>
 
-              {/* Spend Trend area Chart */}
-              <SpendTrendChart 
-                data={trends} 
-                emiAmount={prediction?.emi_amount || 500} 
-              />
+              <SpendTrendChart data={activeSpendTrend} emiAmount={activeEmiAmount} />
 
-              {/* Suggestions and Timeline row */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                
-                {/* Suggestions list */}
-                <SuggestionCards 
-                  suggestions={prediction?.suggestions || []} 
-                  severity={prediction?.severity || 'low'} 
-                />
-
-                {/* Historical Log timeline */}
+                <SuggestionCards suggestions={activeSuggestions} severity={activeSeverity} />
                 <AlertTimeline history={alerts} />
-
               </div>
 
             </div>

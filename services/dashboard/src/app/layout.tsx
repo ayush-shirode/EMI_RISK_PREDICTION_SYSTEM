@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { CustomerProvider } from '@/context/CustomerContext';
 
 export const metadata: Metadata = {
   title: 'VIGILANCE AI — Credit Risk Early Warning & Stress Portal',
@@ -19,7 +20,9 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
       </head>
       <body style={{ fontFamily: "'Outfit', sans-serif" }}>
-        {children}
+        <CustomerProvider>
+          {children}
+        </CustomerProvider>
       </body>
     </html>
   );
