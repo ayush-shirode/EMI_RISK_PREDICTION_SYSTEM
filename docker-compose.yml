@@ -1,9 +1,31 @@
 version: '3.8'
 
+# ============================================================
+# Early Warning Credit Risk & EMI Stress Prediction System
+# RAM Budget (16 GB machine):
+#   Zookeeper:     384 MB
+#   Kafka:         768 MB
+#   Kafka UI:      256 MB
+#   Elasticsearch: 1536 MB
+#   Kibana:        768 MB
+#   Logstash:      768 MB
+#   Ollama:        4096 MB  ← largest, CPU-only
+#   MongoDB:       512 MB
+#   Mongo Express: 128 MB
+#   AI Engine:     512 MB
+#   Plaid Ingest:  256 MB
+#   Dashboard:     768 MB
+#   Scheduler:     256 MB
+#   ES Init:       ephemeral
+#   Kafka Init:    ephemeral
+#   TOTAL PEAK:   ~11.5 GB (leaves ~4.5 GB for OS + swap)
+# ============================================================
+
 services:
-  # --- STEP 2: Kafka Infrastructure ---
+
+  # ── STEP 2: Kafka Infrastructure ──────────────────────────
   zookeeper:
-    image: bitnamilegacy/zookeeper:3.8
+    image: bitnami/zookeeper:3.8
     container_name: zookeeper
     restart: unless-stopped
     environment:
@@ -17,7 +39,7 @@ services:
     mem_reservation: 256m
 
   kafka:
-    image: bitnamilegacy/kafka:3.5
+    image: bitnami/kafka:3.5
     container_name: kafka
     restart: unless-stopped
     depends_on:
@@ -25,16 +47,13 @@ services:
     environment:
       - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
       - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092
-      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT
       - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
       - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=false
       - KAFKA_CFG_LOG_RETENTION_HOURS=168
-      - KAFKA_CFG_LOG_SEGMENT_BYTES=536870912
       - KAFKA_HEAP_OPTS=-Xmx512m -Xms256m
       - ALLOW_PLAINTEXT_LISTENER=yes
     volumes:
       - kafka_data:/bitnami/kafka
-      - ./infra/kafka/kafka-setup.sh:/docker-entrypoint-initdb.d/kafka-setup.sh
     ports:
       - "9092:9092"
     networks:
@@ -42,25 +61,25 @@ services:
     mem_limit: 768m
     mem_reservation: 512m
     healthcheck:
-      test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 60s
 
   kafka-init:
-    image: bitnamilegacy/kafka:3.5
+    image: bitnami/kafka:3.5
     container_name: kafka-init
     depends_on:
       kafka:
         condition: service_healthy
     command: >
       bash -c "
-        kafka-topics.sh --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic raw-transactions --config retention.ms=604800000 &&
-        kafka-topics.sh --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic balance-updates --config retention.ms=259200000 &&
-        kafka-topics.sh --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 1 --topic risk-alerts --config retention.ms=2592000000 &&
-        kafka-topics.sh --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic processed-events --config retention.ms=604800000 &&
-        echo 'All topics created successfully'
+        kafka-topics.sh --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic raw-transactions &&
+        kafka-topics.sh --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic balance-updates &&
+        kafka-topics.sh --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 1 --topic risk-alerts &&
+        kafka-topics.sh --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic processed-events &&
+        echo 'Topics created'
       "
     networks:
       - emi-network
@@ -75,33 +94,13 @@ services:
     environment:
       - KAFKA_CLUSTERS_0_NAME=emi-cluster
       - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
-      - KAFKA_CLUSTERS_0_ZOOKEEPER=zookeeper:2181
     ports:
       - "8080:8080"
     networks:
       - emi-network
     mem_limit: 256m
 
-  # --- STEP 1: Plaid Ingestion ---
-  plaid-ingestion:
-    build: ./services/plaid-ingestion
-    container_name: plaid-ingestion
-    restart: unless-stopped
-    environment:
-      - PLAID_CLIENT_ID=${PLAID_CLIENT_ID}
-      - PLAID_SECRET=${PLAID_SECRET}
-      - PLAID_ENV=sandbox
-      - PLAID_ACCESS_TOKEN=${PLAID_ACCESS_TOKEN}
-      - KAFKA_BROKER=kafka:9092
-      - NODE_OPTIONS=--max-old-space-size=256
-    ports:
-      - "3001:3001"
-    depends_on:
-      kafka:
-        condition: service_healthy
-    networks:
-      - emi-network
-
+  # ── STEP 4: Elasticsearch Stack ───────────────────────────
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     container_name: elasticsearch
@@ -112,21 +111,17 @@ services:
       - xpack.ml.enabled=false
       - ES_JAVA_OPTS=-Xmx1g -Xms512m
       - bootstrap.memory_lock=true
-      - "cluster.routing.allocation.disk.threshold_enabled=false"
     ulimits:
       memlock:
         soft: -1
         hard: -1
-      nofile:
-        soft: 65536
-        hard: 65536
     volumes:
       - es_data:/usr/share/elasticsearch/data
     ports:
       - "9200:9200"
     networks:
       - emi-network
-    mem_limit: 1.5g
+    mem_limit: 1536m
     mem_reservation: 1g
     healthcheck:
       test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -v red"]
@@ -148,12 +143,9 @@ services:
       - NODE_OPTIONS=--max-old-space-size=512
     ports:
       - "5601:5601"
-    volumes:
-      - ./infra/elasticsearch/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
     networks:
       - emi-network
     mem_limit: 768m
-    mem_reservation: 512m
 
   es-init:
     build: ./infra/elasticsearch/init
@@ -167,6 +159,7 @@ services:
       - emi-network
     restart: on-failure
 
+  # ── STEP 3: Logstash ──────────────────────────────────────
   logstash:
     build: ./infra/logstash
     container_name: logstash
@@ -183,39 +176,22 @@ services:
     networks:
       - emi-network
     mem_limit: 768m
-    mem_reservation: 512m
-    volumes:
-      - ./infra/logstash/pipeline:/usr/share/logstash/pipeline:ro
-      - ./infra/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    restart: unless-stopped
-    volumes:
-      - ollama_models:/root/.ollama
-    ports:
-      - "11434:11434"
-    networks:
-      - emi-network
-    mem_limit: 4g
-    mem_reservation: 2g
-
+  # ── STEP 7: MongoDB ───────────────────────────────────────
   mongodb:
     image: mongo:7.0
     container_name: mongodb
     restart: unless-stopped
     environment:
       - MONGO_INITDB_DATABASE=emi_system
-    ports:
-      - "27018:27017"
     volumes:
       - mongo_data:/data/db
       - ./infra/mongodb/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "27018:27017"
     networks:
       - emi-network
     mem_limit: 512m
-    mem_reservation: 256m
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 30s
@@ -239,6 +215,19 @@ services:
       - emi-network
     mem_limit: 128m
 
+  # ── STEP 5: Ollama + AI Engine ────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_models:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - emi-network
+    mem_limit: 4g
+    mem_reservation: 2g
 
   ai-engine:
     build: ./services/ai-engine
@@ -246,7 +235,7 @@ services:
     restart: unless-stopped
     environment:
       - OLLAMA_HOST=http://ollama:11434
-      - OLLAMA_MODEL=tinyllama
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-tinyllama}
       - ES_URL=http://elasticsearch:9200
       - KAFKA_BROKER=kafka:9092
       - MONGO_URI=mongodb://mongodb:27017/emi_system
@@ -255,16 +244,39 @@ services:
     ports:
       - "3002:3002"
     depends_on:
-      ollama:
-        condition: service_started
       elasticsearch:
         condition: service_healthy
       mongodb:
         condition: service_healthy
+      ollama:
+        condition: service_started
     networks:
       - emi-network
     mem_limit: 512m
 
+  # ── STEP 1: Plaid Ingestion ───────────────────────────────
+  plaid-ingestion:
+    build: ./services/plaid-ingestion
+    container_name: plaid-ingestion
+    restart: unless-stopped
+    environment:
+      - PLAID_CLIENT_ID=${PLAID_CLIENT_ID}
+      - PLAID_SECRET=${PLAID_SECRET}
+      - PLAID_ENV=sandbox
+      - PLAID_ACCESS_TOKEN=${PLAID_ACCESS_TOKEN}
+      - KAFKA_BROKER=kafka:9092
+      - NODE_OPTIONS=--max-old-space-size=256
+      - PORT=3001
+    ports:
+      - "3001:3001"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - emi-network
+    mem_limit: 256m
+
+  # ── STEP 6: Dashboard ─────────────────────────────────────
   dashboard:
     build: ./services/dashboard
     container_name: dashboard
@@ -272,7 +284,6 @@ services:
     environment:
       - MONGODB_URI=mongodb://mongodb:27017/emi_system
       - AI_ENGINE_URL=http://ai-engine:3002
-      - ES_URL=http://elasticsearch:9200
       - NODE_OPTIONS=--max-old-space-size=512
     ports:
       - "3000:3000"
@@ -285,18 +296,42 @@ services:
       - emi-network
     mem_limit: 768m
 
+  # ── STEP 8: Scheduler ─────────────────────────────────────
+  scheduler:
+    build:
+      context: .
+      dockerfile: ./services/scheduler/Dockerfile
+    container_name: scheduler
+    restart: unless-stopped
+    environment:
+      - AI_ENGINE_URL=http://ai-engine:3002
+      - MONGO_URI=mongodb://mongodb:27017/emi_system
+      - ALERT_EMAIL=${ALERT_EMAIL}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - DASHBOARD_URL=http://localhost:3000
+      - DEFAULT_EMI_AMOUNT=${DEFAULT_EMI_AMOUNT:-15000}
+      - RUN_ON_START=${RUN_ON_START:-false}
+      - NODE_OPTIONS=--max-old-space-size=256
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      ai-engine:
+        condition: service_started
+    networks:
+      - emi-network
+    mem_limit: 256m
+
+# ── Volumes ──────────────────────────────────────────────────
 volumes:
   zookeeper_data:
-    driver: local
   kafka_data:
-    driver: local
   es_data:
-    driver: local
-  ollama_models:
-    driver: local
   mongo_data:
-    driver: local
+  ollama_models:
 
+# ── Network ───────────────────────────────────────────────────
 networks:
   emi-network:
     driver: bridge

@@ -1,0 +1,25 @@
+{
+  "name": "scheduler",
+  "version": "1.0.0",
+  "description": "Nightly rescoring and notification scheduler microservice",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "@emi/db": "file:../../packages/db",
+    "axios": "^1.6.7",
+    "mongoose": "^8.1.1",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.9"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.16",
+    "@types/node-cron": "^3.0.11",
+    "@types/nodemailer": "^6.4.14",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
