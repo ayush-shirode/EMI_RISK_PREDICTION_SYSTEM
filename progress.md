@@ -20,9 +20,9 @@
 | Zookeeper | 384 MB | 🟢 |
 | Kafka | 768 MB | 🟢 |
 | Kafka UI | 256 MB | 🟢 |
-| Elasticsearch | 1,536 MB | ⬜ |
+| Elasticsearch | 1,536 MB | 🟢 |
 | Kibana | 768 MB | ⬜ |
-| Logstash | 768 MB | ⬜ |
+| Logstash | 768 MB | 🟢 |
 | Ollama | 4,096 MB | ⬜ |
 | MongoDB | 512 MB | ⬜ |
 | Mongo Express | 128 MB | ⬜ |
@@ -78,17 +78,24 @@
 
 ---
 
-## Step 3 — Logstash Pipeline
-**Status:** ⬜ NOT STARTED
+## Step 3 — Logstash Pipeline [COMPLETE]
+**Status:** 🟢 COMPLETE
 
 **Files to create:**
-- [ ] infra/logstash/Dockerfile
-- [ ] infra/logstash/config/logstash.yml
-- [ ] infra/logstash/pipeline/01-transactions.conf
-- [ ] infra/logstash/pipeline/02-balances.conf
-- [ ] infra/logstash/pipeline/03-dead-letter.conf
+- [x] infra/logstash/Dockerfile
+- [x] infra/logstash/config/logstash.yml
+- [x] infra/logstash/pipeline/01-transactions.conf
+- [x] infra/logstash/pipeline/02-balances.conf
+- [x] infra/logstash/pipeline/03-dead-letter.conf
+- [x] infra/logstash/patterns/banking.grok
 
-**Notes:** [AI fills in after completion]
+**Notes:**
+- Configured and launched a Dockerised Logstash service to process banking events.
+- Created `01-transactions.conf` consuming from `raw-transactions`, splitting the transactions array using the `split` filter with target `payload`, remapping fields, and computing `spend_amount`, `is_debit`, and `month_key` variables before indexing into `transactions-*` indices.
+- Created `02-balances.conf` consuming from `balance-updates`, utilizing an inline Ruby filter to calculate `utilisation_pct` (for credit accounts) and `balance_buffer_days` (using average burn rate of $200), and indexing into `balances-*` indices.
+- Configured `03-dead-letter.conf` DLQ processing pipeline. To resolve NoSuchFileException errors on Logstash startup, we pre-created `/usr/share/logstash/data/dead_letter_queue/main` in the `Dockerfile` with correct ownership permissions.
+- Configured custom Grok pattern file `banking.grok` to match Plaid IDs and transaction IDs.
+- Defined a single-node, unsecured `elasticsearch` service inside `docker-compose.yml` to satisfy dependency constraints and enable integration testing.
 
 ---
 
