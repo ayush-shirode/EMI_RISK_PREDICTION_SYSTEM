@@ -187,19 +187,26 @@
 
 ---
 
-## Step 7 — MongoDB Persistence
-**Status:** ⬜ NOT STARTED
+## Step 7 — MongoDB Persistence [COMPLETE]
+**Status:** 🟢 COMPLETE
 
 **Files to create:**
-- [ ] infra/mongodb/init/01-init.js
-- [ ] packages/db/src/connection.ts
-- [ ] packages/db/src/models/Prediction.ts
-- [ ] packages/db/src/models/SpendTrend.ts
-- [ ] packages/db/src/models/Suggestion.ts
-- [ ] packages/db/src/models/AlertLog.ts
-- [ ] packages/db/src/index.ts
+- [x] infra/mongodb/init/01-init.js
+- [x] packages/db/package.json
+- [x] packages/db/tsconfig.json
+- [x] packages/db/src/connection.ts
+- [x] packages/db/src/models/Prediction.ts
+- [x] packages/db/src/models/SpendTrend.ts
+- [x] packages/db/src/models/Suggestion.ts
+- [x] packages/db/src/models/AlertLog.ts
+- [x] packages/db/src/index.ts
 
-**Notes:** [AI fills in after completion]
+**Notes:**
+- Configured MongoDB `mongo:7.0` container inside `docker-compose.yml`, mounting the initialization script `01-init.js` to `/docker-entrypoint-initdb.d:ro`.
+- Wrote `/infra/mongodb/init/01-init.js` to programmatically bootstrap the `emi_system` database and build predictions, spend_trends, suggestions, and alert_logs collections and their compound/unique indexes.
+- Launched a visual database administration client `mongo-express` bound to port `8081` on the host system loopback, disabled basic auth for frictionless local development.
+- Built and compiled a shared `@emi-system/db` TypeScript library containing a connection pooling singleton and Mongoose models, with standard type-definitions, that cleanly compiles using TypeScript without syntax issues.
+- Confirmed indices successfully generated in MongoDB (e.g., compound `user_id_1_created_at_-1`, unique `prediction_id_1`, and alert compound index filters).
 
 ---
 

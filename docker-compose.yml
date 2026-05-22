@@ -202,23 +202,43 @@ services:
     mem_reservation: 2g
 
   mongodb:
-    image: mongo:6.0
+    image: mongo:7.0
     container_name: mongodb
     restart: unless-stopped
+    environment:
+      - MONGO_INITDB_DATABASE=emi_system
     ports:
       - "27018:27017"
     volumes:
       - mongo_data:/data/db
+      - ./infra/mongodb/init:/docker-entrypoint-initdb.d:ro
     networks:
       - emi-network
     mem_limit: 512m
     mem_reservation: 256m
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
+      interval: 30s
+      timeout: 10s
       retries: 5
-      start_period: 10s
+      start_period: 30s
+
+  mongo-express:
+    image: mongo-express:latest
+    container_name: mongo-express
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      - ME_CONFIG_MONGODB_SERVER=mongodb
+      - ME_CONFIG_BASICAUTH=false
+    ports:
+      - "8081:8081"
+    networks:
+      - emi-network
+    mem_limit: 128m
+
 
   ai-engine:
     build: ./services/ai-engine
