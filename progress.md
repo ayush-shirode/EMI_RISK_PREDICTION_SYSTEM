@@ -245,3 +245,29 @@
 - [ ] PLAID_ACCESS_TOKEN — generated via curl exchange
 - [ ] SMTP credentials — for email alerts
 - [ ] ALERT_EMAIL — where to send risk alerts
+
+---
+
+## Dashboard Multi-Customer Upgrade [COMPLETE]
+**Status:** 🟢 COMPLETE
+
+**Files created:**
+- [x] services/dashboard/src/lib/customers.ts — 5 seed customer profiles (Arjun, Priya, Rohan, Sneha, Vikram)
+- [x] services/dashboard/src/context/CustomerContext.tsx — global selected customer state provider
+- [x] services/dashboard/src/components/Nav.tsx — horizontal top nav with 4 route links + active highlight
+- [x] services/dashboard/src/app/customers/page.tsx — sortable customer table, 4 summary stat cards
+- [x] services/dashboard/src/app/customer/[id]/page.tsx — 3-column detail: profile + loan info, risk gauge + metrics, spend chart + suggestions, credit ring, EMI countdown, print report
+- [x] services/dashboard/src/app/comparison/page.tsx — 5-line recharts LineChart, sortable comparison table, risk ranking card
+- [x] services/dashboard/src/app/emi-forecast/page.tsx — 3-stat summary banner, forecast cards sorted by severity, miss probability bars, savings bars, next-30-days timeline table
+
+**Files modified:**
+- [x] services/dashboard/src/app/layout.tsx — wrapped with CustomerProvider
+- [x] services/dashboard/src/app/page.tsx — all values driven by selectedCustomer context, no hardcoded data
+- [x] services/dashboard/src/components/Header.tsx — customer dropdown with severity dot, integrated Nav
+
+**Notes:**
+- All TypeScript: 0 errors (verified via local tsc --noEmit)
+- All 5 routes (/, /customers, /customer/[id], /comparison, /emi-forecast) respond HTTP 200
+- Print report uses window.open + window.print() — generates bank-statement styled PDF
+- Dark theme maintained perfectly across all new pages (same colour tokens, glass-panel class)
+- Remaining: none
