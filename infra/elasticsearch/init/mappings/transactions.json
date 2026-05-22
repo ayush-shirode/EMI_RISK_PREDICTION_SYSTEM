@@ -1,0 +1,25 @@
+{
+  "mappings": {
+    "properties": {
+      "transaction_id":       { "type": "keyword" },
+      "user_id":              { "type": "keyword" },
+      "account_id":           { "type": "keyword" },
+      "merchant_name":        { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
+      "amount":               { "type": "double" },
+      "spend_amount":         { "type": "double" },
+      "is_debit":             { "type": "boolean" },
+      "category":             { "type": "keyword" },
+      "spend_category_primary": { "type": "keyword" },
+      "month_key":            { "type": "keyword" },
+      "transaction_date":     { "type": "date", "format": "yyyy-MM-dd" },
+      "transaction_ts":       { "type": "date" },
+      "ingested_at":          { "type": "date" },
+      "data_source":          { "type": "keyword" }
+    }
+  },
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "index.lifecycle.name": "emi-short-lifecycle"
+  }
+}

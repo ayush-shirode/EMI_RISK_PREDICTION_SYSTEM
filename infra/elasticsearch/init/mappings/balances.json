@@ -1,0 +1,26 @@
+{
+  "mappings": {
+    "properties": {
+      "user_id":             { "type": "keyword" },
+      "snapshot_at":         { "type": "date" },
+      "accounts_enriched": {
+        "type": "nested",
+        "properties": {
+          "account_id":        { "type": "keyword" },
+          "name":              { "type": "text" },
+          "type":              { "type": "keyword" },
+          "subtype":           { "type": "keyword" },
+          "current_balance":   { "type": "double" },
+          "available_balance": { "type": "double" },
+          "credit_limit":      { "type": "double" },
+          "utilisation_pct":   { "type": "double" },
+          "balance_buffer_days": { "type": "double" }
+        }
+      }
+    }
+  },
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0
+  }
+}

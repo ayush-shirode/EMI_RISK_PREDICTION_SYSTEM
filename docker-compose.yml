@@ -103,27 +103,69 @@ services:
       - emi-network
 
   elasticsearch:
-    image: elasticsearch:8.11.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     container_name: elasticsearch
     restart: unless-stopped
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
-      - ES_JAVA_OPTS=-Xmx512m -Xms256m
+      - xpack.ml.enabled=false
+      - ES_JAVA_OPTS=-Xmx1g -Xms512m
+      - bootstrap.memory_lock=true
+      - "cluster.routing.allocation.disk.threshold_enabled=false"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
     ports:
       - "9200:9200"
-    volumes:
-      - elasticsearch_data:/usr/share/elasticsearch/data
     networks:
       - emi-network
-    mem_limit: 1536m
-    mem_reservation: 1024m
+    mem_limit: 1.5g
+    mem_reservation: 1g
     healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -v red"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: kibana
+    restart: unless-stopped
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - xpack.security.enabled=false
+      - NODE_OPTIONS=--max-old-space-size=512
+    ports:
+      - "5601:5601"
+    volumes:
+      - ./infra/elasticsearch/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
+    networks:
+      - emi-network
+    mem_limit: 768m
+    mem_reservation: 512m
+
+  es-init:
+    build: ./infra/elasticsearch/init
+    container_name: es-init
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - ES_URL=http://elasticsearch:9200
+    networks:
+      - emi-network
+    restart: on-failure
 
   logstash:
     build: ./infra/logstash
@@ -151,7 +193,7 @@ volumes:
     driver: local
   kafka_data:
     driver: local
-  elasticsearch_data:
+  es_data:
     driver: local
 
 networks:

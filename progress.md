@@ -21,7 +21,7 @@
 | Kafka | 768 MB | 🟢 |
 | Kafka UI | 256 MB | 🟢 |
 | Elasticsearch | 1,536 MB | 🟢 |
-| Kibana | 768 MB | ⬜ |
+| Kibana | 768 MB | 🟢 |
 | Logstash | 768 MB | 🟢 |
 | Ollama | 4,096 MB | ⬜ |
 | MongoDB | 512 MB | ⬜ |
@@ -99,22 +99,28 @@
 
 ---
 
-## Step 4 — Elasticsearch + Kibana
-**Status:** ⬜ NOT STARTED
+## Step 4 — Elasticsearch & Kibana [COMPLETE]
+**Status:** 🟢 COMPLETE
 
 **Files to create:**
-- [ ] infra/elasticsearch/init/index.js
-- [ ] infra/elasticsearch/init/package.json
-- [ ] infra/elasticsearch/init/mappings/transactions.json
-- [ ] infra/elasticsearch/init/mappings/balances.json
-- [ ] infra/elasticsearch/init/mappings/risk-signals.json
+- [x] infra/elasticsearch/init/index.js
+- [x] infra/elasticsearch/init/package.json
+- [x] infra/elasticsearch/init/mappings/transactions.json
+- [x] infra/elasticsearch/init/mappings/balances.json
+- [x] infra/elasticsearch/init/mappings/risk-signals.json
+- [x] infra/elasticsearch/kibana/kibana.yml
 
 **ES Indices:**
-- [ ] transactions-current
-- [ ] balances-current
-- [ ] risk-signals
+- [x] transactions-current
+- [x] balances-current
+- [x] risk-signals
 
-**Notes:** [AI fills in after completion]
+**Notes:**
+- Configured and launched Elasticsearch 8.11.0 and Kibana 8.11.0 inside `docker-compose.yml` with single-node mode, disabled security filters, memory locks, and custom ulimits for optimization on the 16 GB host.
+- Implemented three JSON schemas: `transactions.json`, `balances.json` (employing nested types for account structure), and `risk-signals.json` (defining 768-dimensional dense vector embeddings for downstream models).
+- Implemented an ephemeral containerized Node.js service `es-init` that awaits cluster readiness and provisions two ILM policies (`emi-short-lifecycle` and `emi-long-lifecycle`) alongside the three index templates.
+- Created `kibana.yml` binding properties and targeting the Elasticsearch backend, mounted directly as read-only.
+- Verified index configuration and lifecycle properties successfully using Elasticsearch cat and ILM API queries.
 
 ---
 

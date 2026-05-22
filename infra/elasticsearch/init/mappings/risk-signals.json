@@ -1,0 +1,23 @@
+{
+  "mappings": {
+    "properties": {
+      "user_id":           { "type": "keyword" },
+      "prediction_id":     { "type": "keyword" },
+      "risk_score":        { "type": "double" },
+      "miss_probability":  { "type": "double" },
+      "severity":          { "type": "keyword" },
+      "emi_due_date":      { "type": "date", "format": "yyyy-MM-dd" },
+      "emi_amount":        { "type": "double" },
+      "model_version":     { "type": "keyword" },
+      "suggestions":       { "type": "text" },
+      "context_window_days": { "type": "integer" },
+      "created_at":        { "type": "date" },
+      "embedding":         { "type": "dense_vector", "dims": 768 }
+    }
+  },
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "index.lifecycle.name": "emi-long-lifecycle"
+  }
+}

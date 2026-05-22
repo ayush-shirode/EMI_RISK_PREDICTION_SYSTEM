@@ -1,0 +1,12 @@
+{
+  "name": "es-init",
+  "version": "1.0.0",
+  "description": "Elasticsearch indices and ILM initializer",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@elastic/elasticsearch": "^8.11.0"
+  }
+}
