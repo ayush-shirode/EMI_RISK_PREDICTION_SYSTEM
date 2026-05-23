@@ -1,0 +1,8 @@
+{
+  "/not-found": "app/not-found.js",
+  "/page": "app/page.js",
+  "/api/trends/route": "app/api/trends/route.js",
+  "/prediction/page": "app/prediction/page.js",
+  "/api/risk/route": "app/api/risk/route.js",
+  "/api/alerts/route": "app/api/alerts/route.js"
+}

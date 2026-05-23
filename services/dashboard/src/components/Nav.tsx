@@ -1,9 +1,10 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutGrid, Users, BarChart2, CalendarClock } from 'lucide-react';
+import { LayoutGrid, Users, BarChart2, CalendarClock, Brain, type LucideIcon } from 'lucide-react';
+import { useCustomer } from '@/context/CustomerContext';
 
-const navLinks = [
+const STATIC_LINKS: { href: string; label: string; icon: LucideIcon; matchPath?: string }[] = [
   { href: '/', label: 'Dashboard', icon: LayoutGrid },
   { href: '/customers', label: 'Customers', icon: Users },
   { href: '/comparison', label: 'Comparison', icon: BarChart2 },
@@ -12,14 +13,21 @@ const navLinks = [
 
 export function Nav() {
   const pathname = usePathname();
+  const { selectedCustomer } = useCustomer();
+  const aiHref = `/prediction?customerId=${selectedCustomer.id}`;
+
+  const allLinks = [
+    ...STATIC_LINKS,
+    { href: aiHref, label: 'AI Analysis', icon: Brain, matchPath: '/prediction' },
+  ];
 
   return (
     <nav className="flex items-center gap-1 ml-6">
-      {navLinks.map(({ href, label, icon: Icon }) => {
-        const active = pathname === href;
+      {allLinks.map(({ href, label, icon: Icon, matchPath }) => {
+        const active = matchPath ? pathname === matchPath : pathname === href;
         return (
           <Link
-            key={href}
+            key={label}
             href={href}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
               active

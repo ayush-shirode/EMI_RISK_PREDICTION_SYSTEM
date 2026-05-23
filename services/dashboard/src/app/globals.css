@@ -54,3 +54,10 @@
 .glass-panel:hover {
   @apply border-[#3b82f6]/40 shadow-[0_0_15px_rgba(59,130,246,0.1)];
 }
+
+/* Print stylesheet — for /prediction page Download PDF */
+@media print {
+  nav, .no-print { display: none !important; }
+  body { background: #ffffff !important; color: #000000 !important; }
+  h1, h2, h3, p, td, th, span { color: #111111 !important; }
+}

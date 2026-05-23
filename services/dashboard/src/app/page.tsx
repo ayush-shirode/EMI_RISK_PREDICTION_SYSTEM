@@ -3,8 +3,7 @@ import { useState } from 'react';
 import { Header } from '@/components/Header';
 import { RiskGauge } from '@/components/RiskGauge';
 import { SpendTrendChart } from '@/components/SpendTrendChart';
-import { SuggestionCards } from '@/components/SuggestionCards';
-import { AlertTimeline } from '@/components/AlertTimeline';
+import { PredictionCTA } from '@/components/PredictionCTA';
 import { useRiskPolling } from '@/hooks/useRiskPolling';
 import { useCustomer } from '@/context/CustomerContext';
 import {
@@ -241,10 +240,7 @@ export default function Dashboard() {
 
               <SpendTrendChart data={activeSpendTrend} emiAmount={activeEmiAmount} />
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <SuggestionCards suggestions={activeSuggestions} severity={activeSeverity} />
-                <AlertTimeline history={alerts} />
-              </div>
+              <PredictionCTA customer={selectedCustomer} />
 
             </div>
 

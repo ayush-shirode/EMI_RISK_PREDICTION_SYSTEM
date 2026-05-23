@@ -248,6 +248,49 @@
 
 ---
 
+## SHAP Explainability Page [COMPLETE]
+**Status:** 🟢 COMPLETE
+
+**Files created:**
+- [x] services/dashboard/src/lib/shap.ts — computeShap() and getShapSummary() for 7 financial features
+- [x] services/dashboard/src/app/prediction/page.tsx — full explainability page (/prediction route)
+- [x] services/dashboard/src/app/prediction/prediction.module.css — all page-specific dark-theme styles
+- [x] services/dashboard/src/components/ShapWaterfallChart.tsx — horizontal bar waterfall chart (pure React/CSS)
+- [x] services/dashboard/src/components/FeatureDetailTable.tsx — sortable feature table with impact chips
+- [x] services/dashboard/src/components/ModelMetaCard.tsx — 6-chip model metadata grid
+- [x] services/dashboard/src/components/AiReasoningCard.tsx — plain English summary + 3 coloured sub-blocks
+- [x] services/dashboard/src/components/PredictionCTA.tsx — landing page teaser card
+
+**Files modified:**
+- [x] services/dashboard/src/app/page.tsx — removed SuggestionCards + AlertTimeline, added PredictionCTA
+- [x] services/dashboard/src/components/Nav.tsx — added "AI Analysis" link with Brain icon
+- [x] services/dashboard/src/app/globals.css — added @media print block
+
+**Features evaluated (SHAP):** 7
+1. Savings vs EMI gap
+2. 3-month spend trend
+3. Income utilisation %
+4. EMI-to-income ratio
+5. Credit score
+6. Avg monthly balance
+7. Loan tenure remaining
+
+**Verified:**
+- TypeScript: 0 errors (npx tsc --noEmit)
+- Landing page: PredictionCTA renders with severity colour, links to /prediction
+- Nav: 5 links total including AI Analysis
+- /prediction page: all 4 zones render (header, stat cards, main grid, alert timeline)
+- SHAP bars: teal for risk-increasing, red for risk-reducing features
+- Customer dropdown: switching customer re-runs SHAP and updates all values reactively
+- Feature table: sortable by feature name, SHAP value, and impact level
+- Clicking a table row highlights corresponding waterfall bar (bidirectional sync)
+- Print stylesheet: included in globals.css
+
+**Remaining:** none
+
+
+---
+
 ## Dashboard Multi-Customer Upgrade [COMPLETE]
 **Status:** 🟢 COMPLETE
 
