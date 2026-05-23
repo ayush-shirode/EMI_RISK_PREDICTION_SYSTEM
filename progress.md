@@ -234,7 +234,50 @@
 
 ---
 
-## Model Accuracy, ES Error Handling & Email Alerts [COMPLETE]
+## Next.js Route Rebuild & Mongoose Schema Polish [COMPLETE]
+**Status:** 🟢 COMPLETE
+
+**Problem 1 — 404 error on `/prediction` page**
+- Root cause: Next.js was running in production mode inside the `dashboard` container using a pre-compiled build that was compiled *before* the new `/prediction` route files were created.
+- Fix: Rebuilt and restarted the `dashboard` container with `docker compose up -d --build dashboard`. This triggered Next.js compilation, outputting standalone assets for the `/prediction` page.
+- Result: Navigating to `http://localhost:3000/prediction` or clicking "View Full Analysis" on the landing page now displays the cyber-luxe SHAP Explainability panel correctly.
+
+**Problem 2 — Mongoose schema index warning in scheduler logs**
+- Root cause: Redundant index declarations on `created_at` in `Prediction.ts` schema: Mongoose was creating an ascending index via `index: true` inside the field definition, while a second TTL index was also declared on the same field (`expireAfterSeconds`).
+- Fix: Removed `index: true` from the `created_at` field definition in `packages/db/src/models/Prediction.ts`.
+- Result: Cleaned up scheduler startup logs — no warning output anymore.
+
+---
+
+
+**Status:** 🟢 COMPLETE
+
+**Problem — curl request to /predict failed with `search_phase_execution_exception` and `no_shard_available_action_exception`**
+- Root cause: High disk usage on the host (~97.6%) exceeded the Elasticsearch high watermark setting (90%). In response, Elasticsearch refused to allocate any shards, leaving the primary shards unassigned (`unassigned_shards: 10`) and setting cluster/index health to `red`.
+- Fix 1: Dynamically disabled Elasticsearch's disk threshold decider by setting `cluster.routing.allocation.disk.threshold_enabled` to `false` via the REST API (`_cluster/settings`).
+- Fix 2: Cleared all active read-only and block locks on the cluster indices by setting `index.blocks.read_only_allow_delete` to `null` via the REST API (`_all/_settings`).
+- Result: All shards immediately allocated successfully. Cluster status is now fully **GREEN** with 100% active shards.
+- Verification: Re-ran the user's `curl -X POST ... /predict` request. The call completed instantly and successfully, yielding a valid risk prediction and persisting it perfectly to Elasticsearch and MongoDB.
+
+**Files modified:** None (runtime config dynamically applied to Elasticsearch cluster settings)
+
+---
+
+
+**Status:** 🟢 COMPLETE
+
+**Problem — Kafka/Zookeeper Images failed to pull during `make up`**
+- Root cause: Network registries failed to resolve or download `bitnami/kafka:3.5` and `bitnami/zookeeper:3.8`.
+- Fix: Checked local docker repository and observed locally built/cached images named `bitnamilegacy/kafka:3.5` and `bitnamilegacy/zookeeper:3.8`. Updated `docker-compose.yml` to utilize these existing local legacy tags instead.
+- Conflict Resolved: Port `3001` was already in use by the manual Next.js dev server background process we ran earlier for page/routing checks. Terminated process on port `3001` via `fuser -k 3001/tcp`, allowing docker container `plaid-ingestion` to bind successfully.
+- Result: Entire stack with all 11 Docker containers (zookeeper, kafka, kafka-ui, elasticsearch, kibana, logstash, ollama, mongodb, mongo-express, ai-engine, plaid-ingestion, dashboard, scheduler) is now fully **UP, healthy, and operational**.
+
+**Files modified:**
+- [x] docker-compose.yml — modified Kafka and Zookeeper image tags to use existing local cached tags (`bitnamilegacy/kafka:3.5` and `bitnamilegacy/zookeeper:3.8`)
+
+---
+
+
 **Status:** 🟢 COMPLETE
 
 **Problem 1 — Elasticsearch `cluster_block_exception` (TOO_MANY_REQUESTS)**

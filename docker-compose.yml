@@ -25,7 +25,7 @@ services:
 
   # ── STEP 2: Kafka Infrastructure ──────────────────────────
   zookeeper:
-    image: bitnami/zookeeper:3.8
+    image: bitnamilegacy/zookeeper:3.8
     container_name: zookeeper
     restart: unless-stopped
     environment:
@@ -39,7 +39,7 @@ services:
     mem_reservation: 256m
 
   kafka:
-    image: bitnami/kafka:3.5
+    image: bitnamilegacy/kafka:3.5
     container_name: kafka
     restart: unless-stopped
     depends_on:
@@ -68,7 +68,7 @@ services:
       start_period: 60s
 
   kafka-init:
-    image: bitnami/kafka:3.5
+    image: bitnamilegacy/kafka:3.5
     container_name: kafka-init
     depends_on:
       kafka:
