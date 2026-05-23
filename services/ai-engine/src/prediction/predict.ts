@@ -6,25 +6,47 @@ import { PredictionSchema, Prediction } from './schema';
 import { writeToES } from '../output/writeToES';
 import { writeToMongo } from '../output/writeToMongo';
 import { publishToKafka } from '../output/publishToKafka';
+import { triggerEmailAlert } from '../output/emailAlert';
 
 const ollama = new Ollama({
   baseUrl: process.env.OLLAMA_HOST || 'http://ollama:11434',
   model: process.env.OLLAMA_MODEL || 'tinyllama',
-  temperature: 0.1,  // Low temp for consistent structured output
-  format: 'json',    // Force Ollama to output valid JSON
+  temperature: 0.05,  // Very low temp for consistent, deterministic output
+  format: 'json',
 });
 
-/**
- * Deterministic fallback generator when LLM fails to output valid or parseable JSON.
- * Analyzes depository/checking balance, debt ratios, and cash buffers.
- */
+/* -----------------------------------------------------------------------
+ * EMI AMOUNT SANITY GUARD
+ * Reject clearly impractical EMI values before sending to the model.
+ * Max realistic EMI for an individual in India: ₹5,00,000/month
+ * ----------------------------------------------------------------------- */
+const MAX_REASONABLE_EMI = 500_000;
+
+function validateEmiAmount(emiAmount: number): void {
+  if (emiAmount <= 0) {
+    throw new Error(`Invalid EMI amount: ₹${emiAmount}. Must be a positive number.`);
+  }
+  if (emiAmount > MAX_REASONABLE_EMI) {
+    throw new Error(
+      `EMI amount ₹${emiAmount.toLocaleString('en-IN')} exceeds the maximum allowed value of ` +
+      `₹${MAX_REASONABLE_EMI.toLocaleString('en-IN')}. ` +
+      `Please enter a realistic monthly EMI amount (not an annual figure or total loan amount).`
+    );
+  }
+}
+
+/* -----------------------------------------------------------------------
+ * DETERMINISTIC FALLBACK — runs when Ollama returns invalid JSON or fails.
+ * Uses actual financial figures from Elasticsearch context.
+ * Now correctly calibrated against real savings and EMI amounts.
+ * ----------------------------------------------------------------------- */
 function generateFallbackPrediction(rawContext: any, emiAmount: number): Prediction {
   const balanceDocs = rawContext.balance?.hits?.hits || [];
-  const balanceDoc = balanceDocs[0]?._source || {};
+  const balanceDoc  = balanceDocs[0]?._source || {};
   const accountsEnriched = balanceDoc.accounts_enriched || [];
 
   let depositoryBalance = 0;
-  let hasCreditCard = false;
+  let hasCreditCard     = false;
   let creditUtilization = 0;
   let minBalanceBufferDays = 999;
 
@@ -33,7 +55,7 @@ function generateFallbackPrediction(rawContext: any, emiAmount: number): Predict
       depositoryBalance += (acc.current_balance || 0);
     }
     if (acc.type === 'credit') {
-      hasCreditCard = true;
+      hasCreditCard     = true;
       creditUtilization = Math.max(creditUtilization, acc.utilisation_pct || 0);
     }
     if (acc.balance_buffer_days !== undefined && acc.balance_buffer_days !== null) {
@@ -41,130 +63,187 @@ function generateFallbackPrediction(rawContext: any, emiAmount: number): Predict
     }
   });
 
-  let riskScore = 15;
-  let reasoning = 'User displays stable account balances and solid cash buffer relative to EMI size.';
-  const warningFlags: string[] = [];
-  const suggestions: string[] = [];
+  const txAgg          = rawContext.txAgg || {};
+  const total90d       = txAgg.aggregations?.total_90d?.value || 0;
+  const monthlyBuckets = txAgg.aggregations?.monthly?.buckets || [];
 
-  if (depositoryBalance < emiAmount) {
+  // Compute spend trend: compare last 3 months vs prior 3 months
+  let spendTrendRatio = 1.0;
+  if (monthlyBuckets.length >= 2) {
+    const recentMonths = monthlyBuckets.slice(-3);
+    const prevMonths   = monthlyBuckets.slice(-6, -3);
+    const recentAvg    = recentMonths.reduce((s: number, b: any) => s + (b.monthly_total?.value || 0), 0) / (recentMonths.length || 1);
+    const prevAvg      = prevMonths.reduce((s: number, b: any) => s + (b.monthly_total?.value || 0), 0) / (prevMonths.length || 1);
+    if (prevAvg > 0) spendTrendRatio = recentAvg / prevAvg;
+  }
+
+  // ---- Primary risk scoring ----
+  let riskScore = 15;
+  const warningFlags: string[] = [];
+  const suggestions: string[]  = [];
+  let reasoning = '';
+
+  const hasAccountData = accountsEnriched.length > 0;
+
+  if (!hasAccountData && total90d === 0) {
+    // No Plaid/ES data at all — apply a cautious medium-risk default
+    riskScore = 35;
+    reasoning = `No linked account data is available for analysis. A moderate risk level is applied pending account verification.`;
+    warningFlags.push('NO_ACCOUNT_DATA');
+    suggestions.push(
+      'Link your bank account via Plaid to enable accurate risk scoring.',
+      `Set aside ₹${emiAmount.toLocaleString('en-IN')} in a dedicated account before the EMI due date.`,
+      'Contact your loan officer if you anticipate payment difficulty.'
+    );
+  } else if (depositoryBalance < emiAmount) {
+    // CRITICAL: savings are below EMI — definite risk
+    const coveragePct = depositoryBalance > 0 ? Math.round((depositoryBalance / emiAmount) * 100) : 0;
     riskScore = 88;
-    reasoning = `Upcoming EMI of ₹${emiAmount} exceeds available savings balance of ₹${depositoryBalance.toFixed(2)}. Highly elevated default risk.`;
+    reasoning = `Depository balance ₹${depositoryBalance.toFixed(0)} covers only ${coveragePct}% of the ₹${emiAmount.toLocaleString('en-IN')} EMI due. Highly elevated default risk.`;
     warningFlags.push('INSUFFICIENT_FUNDS', 'CRITICAL_LIQUIDITY_STRESS');
     suggestions.push(
-      'Transfer funds immediately from an external savings account to cover the EMI.',
-      'Contact your lender to request a temporary grace period or tenure extension.',
-      'Restrict all discretionary expenses until the EMI is fully paid.'
+      `Transfer at least ₹${(emiAmount - depositoryBalance).toFixed(0)} from an external account immediately to cover the shortfall.`,
+      'Contact your lender to request a temporary grace period or EMI deferral.',
+      'Restrict all discretionary spending until after the EMI due date.'
     );
-  } else if (depositoryBalance < emiAmount * 2) {
+  } else if (depositoryBalance < emiAmount * 1.5) {
+    // HIGH: thin buffer — less than 1.5× EMI
     riskScore = 55;
-    reasoning = `Savings balance (₹${depositoryBalance.toFixed(2)}) is close to the EMI amount of ₹${emiAmount}. Cash flow is tight.`;
+    reasoning = `Savings balance ₹${depositoryBalance.toFixed(0)} is only ${Math.round((depositoryBalance / emiAmount) * 100)}% of the ₹${emiAmount.toLocaleString('en-IN')} EMI — a thin buffer that leaves little room for unexpected expenses.`;
     warningFlags.push('LOW_CASH_BUFFER');
     suggestions.push(
-      'Reduce non-essential entertainment and retail spends this week.',
-      'Segregate the EMI amount in your account to prevent accidental withdrawals.',
-      'Ensure salary or primary income credit occurs before the EMI due date.'
+      `Segregate ₹${emiAmount.toLocaleString('en-IN')} in a separate account to prevent accidental withdrawal before the due date.`,
+      'Reduce non-essential spending (dining, entertainment) this week to build buffer.',
+      'Ensure your salary or primary income is credited before the EMI date.'
     );
+    if (spendTrendRatio > 1.2) {
+      riskScore = Math.min(riskScore + 10, 70);
+      warningFlags.push('RISING_SPEND_TREND');
+    }
   } else {
+    // Savings appear adequate — assess secondary risk factors
     if (minBalanceBufferDays < 7) {
       riskScore = Math.max(riskScore, 45);
-      reasoning = `High transaction burn rate. Current cash runway is less than a week (${minBalanceBufferDays.toFixed(1)} days).`;
+      reasoning = `High transaction burn rate: cash runway is only ${Math.round(minBalanceBufferDays)} days despite current balance. Spending pace may deplete funds before the EMI date.`;
       warningFlags.push('SHORT_CASH_RUNWAY');
       suggestions.push(
-        'Set up strict daily spending limits to stretch your balance runway.',
-        'Review recent recurring subscriptions and cancel unused plans.'
+        'Set strict daily spending limits to preserve your balance runway.',
+        'Review recurring subscriptions and cancel any unused services this week.'
       );
     }
+
     if (creditUtilization > 75) {
       riskScore = Math.max(riskScore, 40);
-      reasoning = `High credit card utilization (${creditUtilization.toFixed(1)}%). Significant outstanding debt burden.`;
-      warningFlags.push('HIGH_DEBT_UTILISATION');
-      suggestions.push('Prioritize paying down outstanding credit card balances to improve credit score.');
+      reasoning += (reasoning ? ' ' : '') + `Credit card utilisation is ${creditUtilization.toFixed(0)}% — high debt burden may divert liquidity away from EMI.`;
+      warningFlags.push('HIGH_CREDIT_UTILISATION');
+      suggestions.push('Prioritise paying down outstanding credit card balances to free up liquidity.');
     }
-    
+
+    if (spendTrendRatio > 1.3) {
+      riskScore = Math.max(riskScore, 35);
+      warningFlags.push('RISING_SPEND_TREND');
+      suggestions.push(`Spending has risen ${Math.round((spendTrendRatio - 1) * 100)}% recently — monitor closely to avoid exceeding your income buffer.`);
+    }
+
     if (riskScore === 15) {
+      reasoning = `Savings balance ₹${depositoryBalance.toFixed(0)} comfortably covers the ₹${emiAmount.toLocaleString('en-IN')} EMI (${Math.round((depositoryBalance / emiAmount) * 100)}% coverage). Cash flow is healthy.`;
       suggestions.push(
-        'Maintain current financial discipline and balance buffers.',
-        'Set up standing instructions/auto-debit for stress-free EMI payment.',
-        'Consider parking surplus savings in liquid interest-bearing accounts.'
+        'Financial health looks good. Set up auto-debit for stress-free EMI payment.',
+        'Consider parking surplus savings in a liquid FD to earn interest before the due date.',
+        'Maintain current spending discipline to preserve your strong buffer.'
       );
-    } else {
-      suggestions.push('Keep emergency cash reserves liquid to absorb balance dips.');
     }
   }
 
+  // Ensure at least 3 suggestions
   while (suggestions.length < 3) {
-    suggestions.push('Establish a secondary cash reserve equivalent to 3 monthly EMIs.');
+    suggestions.push('Establish a cash reserve of at least 3 monthly EMIs as an emergency buffer.');
   }
 
+  // Final severity classification
   let severity: 'low' | 'medium' | 'high' | 'critical' = 'low';
-  if (riskScore >= 80) severity = 'critical';
+  if (riskScore >= 80)      severity = 'critical';
   else if (riskScore >= 50) severity = 'high';
   else if (riskScore >= 30) severity = 'medium';
 
   const missProbability = Number((riskScore / 100).toFixed(2));
 
   return {
-    risk_score: riskScore,
+    risk_score:       riskScore,
     miss_probability: missProbability,
     severity,
     reasoning,
     suggestions,
-    warning_flags: warningFlags
+    warning_flags:    warningFlags,
   };
 }
 
+/* -----------------------------------------------------------------------
+ * MAIN PREDICTION RUNNER
+ * ----------------------------------------------------------------------- */
 export async function runPrediction(userId: string, emiAmount: number, emiDueDate: string) {
-  // 1. Retrieve context from ES
-  const rawContext = await fetchFinancialContext(userId, emiDueDate, emiAmount);
+  // 0. Validate EMI amount before doing any work
+  validateEmiAmount(emiAmount);
+
+  // 1. Retrieve context from Elasticsearch
+  const rawContext    = await fetchFinancialContext(userId, emiDueDate, emiAmount);
   const contextString = buildContextString(rawContext, emiAmount);
 
   let prediction: Prediction;
 
   try {
     // 2. Build and send prompt to Ollama
-    console.log(`[AI Engine] Invoking Ollama with formatted context prompt...`);
-    const prompt = buildPredictionPrompt(contextString, emiAmount, emiDueDate);
+    console.log(`[AI Engine] Invoking Ollama (${process.env.OLLAMA_MODEL || 'tinyllama'}) for user ${userId}, EMI ₹${emiAmount}...`);
+    const prompt      = buildPredictionPrompt(contextString, emiAmount, emiDueDate);
     const rawResponse = await ollama.call(prompt);
-    console.log('[AI Engine] Raw LLM Response:', rawResponse);
+    console.log('[AI Engine] Raw LLM Response:', rawResponse.slice(0, 300));
 
     // 3. Parse and validate JSON output
     const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      throw new Error('No JSON found in Ollama response.');
+      throw new Error('No JSON block found in Ollama response.');
     }
 
-    const parsedJson = JSON.parse(jsonMatch[0]);
+    const parsedJson  = JSON.parse(jsonMatch[0]);
     const parseResult = PredictionSchema.safeParse(parsedJson);
     if (!parseResult.success) {
-      console.error('[AI Engine] Zod validation failed for JSON:', JSON.stringify(parsedJson, null, 2));
-      console.error('[AI Engine] Zod errors:', JSON.stringify(parseResult.error.errors, null, 2));
-      throw new Error(`LLM output did not match expected schema`);
+      console.error('[AI Engine] Zod validation failed:', JSON.stringify(parseResult.error.errors, null, 2));
+      throw new Error('LLM output did not match expected schema');
     }
     prediction = parseResult.data;
-    console.log('[AI Engine] Successfully generated prediction via Ollama LLM.');
+    console.log(`[AI Engine] ✓ Ollama prediction: risk=${prediction.risk_score}, severity=${prediction.severity}`);
   } catch (error: any) {
-    console.warn(`[AI Engine] Ollama prediction run failed or returned invalid JSON. Invoking self-healing fallback algorithm... Error:`, error.message || error);
+    console.warn(`[AI Engine] Ollama failed — using deterministic fallback. Reason: ${error.message || error}`);
     prediction = generateFallbackPrediction(rawContext, emiAmount);
-    console.log('[AI Engine] Fallback prediction computed successfully:', JSON.stringify(prediction, null, 2));
+    console.log(`[AI Engine] ✓ Fallback prediction: risk=${prediction.risk_score}, severity=${prediction.severity}`);
   }
 
-  // 4. Enrich prediction
+  // 4. Enrich prediction with metadata
   const result = {
     ...prediction,
-    user_id: userId,
+    user_id:       userId,
     prediction_id: `pred-${Date.now()}`,
-    emi_due_date: emiDueDate,
-    emi_amount: emiAmount,
+    emi_due_date:  emiDueDate,
+    emi_amount:    emiAmount,
     model_version: process.env.OLLAMA_MODEL || 'tinyllama',
-    created_at: new Date().toISOString(),
+    created_at:    new Date().toISOString(),
+    notified:      false,
   };
 
-  // 5. Write to all outputs
+  // 5. Write to all outputs (ES failure is non-fatal, MongoDB is primary)
   await Promise.all([
     writeToES(result),
     writeToMongo(result),
     publishToKafka(result),
   ]);
+
+  // 6. Immediately trigger email alert for high/critical predictions
+  //    (don't wait for the 30-min scheduler cron — send now)
+  if (result.severity === 'high' || result.severity === 'critical') {
+    triggerEmailAlert(result).catch(err =>
+      console.error('[AI Engine] Immediate email alert failed (non-fatal):', err.message)
+    );
+  }
 
   return result;
 }

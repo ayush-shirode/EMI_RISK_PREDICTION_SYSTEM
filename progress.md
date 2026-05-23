@@ -234,7 +234,43 @@
 
 ---
 
-## Known Issues / Blockers
+## Model Accuracy, ES Error Handling & Email Alerts [COMPLETE]
+**Status:** 🟢 COMPLETE
+
+**Problem 1 — Elasticsearch `cluster_block_exception` (TOO_MANY_REQUESTS)**
+- Root cause: ES disk usage exceeded flood-stage watermark, locking the `risk-signals` index as read-only.
+- Fix: `writeToES.ts` now catches the error gracefully, logs a clear remediation command, and lets the prediction succeed via MongoDB without crashing the pipeline.
+- User-facing: The trigger API now returns a human-friendly message instead of the raw JSON blob.
+
+**Problem 2 — Model inaccuracy (₹68,00,000 EMI showing low risk)**
+- Root cause: No input validation — impractical EMI amounts were sent to the model. The fallback algorithm was also miscalibrated.
+- Fix 1: `predict.ts` validates EMI amount < ₹5,00,000 before running.
+- Fix 2: Trigger API (`route.ts`) validates and rejects > ₹5,00,000 with a clear error message.
+- Fix 3: Dashboard form shows live red warning + disables submit button when amount is unrealistic.
+- Fix 4: `prompt.ts` rewritten with calibrated examples, explicit risk rules, and forces the model to reference actual ₹ figures in reasoning.
+- Fix 5: Fallback algorithm completely rewritten — now correctly computes savings/EMI ratio, spend trends, credit utilisation, and buffer days before assigning risk score.
+
+**Problem 3 — Email alerts not firing**
+- Root cause: Alerts only triggered on a 30-min cron in the scheduler service; MongoDB `notified` field was missing.
+- Fix 1: `predict.ts` now calls `triggerEmailAlert()` immediately after a high/critical prediction — no waiting for cron.
+- Fix 2: New `emailAlert.ts` in ai-engine sends a beautifully formatted HTML email with risk metrics, reasoning, suggestions, and a direct link to /prediction.
+- Fix 3: Falls back to detailed console log (visible in `docker logs`) when SMTP is not configured.
+- Fix 4: `notified: false` field added to MongoDB prediction document so the scheduler cron doesn't double-send.
+
+**Files modified:**
+- [x] services/ai-engine/src/output/writeToES.ts — graceful flood-stage error handling
+- [x] services/ai-engine/src/ollama/prompt.ts — full rewrite with calibrated examples
+- [x] services/ai-engine/src/prediction/predict.ts — EMI validation, rewritten fallback, immediate email trigger
+- [x] services/ai-engine/src/output/emailAlert.ts — NEW: immediate HTML email alert module
+- [x] services/ai-engine/package.json — added nodemailer + @types/nodemailer
+- [x] services/dashboard/src/app/api/risk/trigger/route.ts — EMI validation, friendly ES error message
+- [x] services/dashboard/src/app/page.tsx — live client-side EMI warning + disabled submit
+
+**TypeScript:** 0 errors (both ai-engine and dashboard)
+
+---
+
+
 - None. Entire microservices cluster is up and healthy.
 
 ---

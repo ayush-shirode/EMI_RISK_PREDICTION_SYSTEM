@@ -22,6 +22,13 @@ export default function Dashboard() {
   const [customEmi, setCustomEmi] = useState(String(selectedCustomer.emiAmount));
   const [customDate, setCustomDate] = useState('2026-06-01');
 
+  const MAX_EMI = 500_000; // ₹5,00,000 maximum sane EMI
+  const parsedEmiNum = parseFloat(customEmi);
+  const emiIsInvalid = !isNaN(parsedEmiNum) && parsedEmiNum > MAX_EMI;
+  const emiWarning = emiIsInvalid
+    ? `Enter the monthly EMI (max ₹${MAX_EMI.toLocaleString('en-IN')}), not the full loan amount.`
+    : null;
+
   const {
     prediction,
     trends,
@@ -36,7 +43,7 @@ export default function Dashboard() {
   const handleTriggerPrediction = async (e: React.FormEvent) => {
     e.preventDefault();
     const parsedAmount = parseFloat(customEmi);
-    if (isNaN(parsedAmount) || parsedAmount <= 0) return;
+    if (isNaN(parsedAmount) || parsedAmount <= 0 || parsedAmount > MAX_EMI) return;
     await trigger(parsedAmount, customDate);
   };
 
@@ -139,10 +146,21 @@ export default function Dashboard() {
                         value={customEmi}
                         onChange={(e) => setCustomEmi(e.target.value)}
                         placeholder={String(selectedCustomer.emiAmount)}
-                        className="w-full bg-[#0c101b] border border-[#1f293d] rounded-xl pl-8 pr-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500 font-mono transition-all"
+                        min="1"
+                        max="500000"
+                        className={`w-full bg-[#0c101b] border rounded-xl pl-8 pr-3 py-2 text-sm text-white focus:outline-none font-mono transition-all ${
+                          emiIsInvalid
+                            ? 'border-rose-500 focus:border-rose-400'
+                            : 'border-[#1f293d] focus:border-cyan-500'
+                        }`}
                         required
                       />
                     </div>
+                    {emiWarning && (
+                      <p className="text-xs text-rose-400 mt-1 flex items-center gap-1">
+                        <span>⚠</span> {emiWarning}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -163,7 +181,7 @@ export default function Dashboard() {
 
                   <button
                     type="submit"
-                    disabled={triggering}
+                    disabled={triggering || emiIsInvalid}
                     className="w-full bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white font-bold py-2.5 px-4 rounded-xl text-sm transition-all shadow-[0_0_15px_rgba(59,130,246,0.3)] flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {triggering ? (
